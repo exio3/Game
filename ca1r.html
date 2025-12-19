@@ -2,208 +2,217 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Velocity Drive: Neon Rush</title>
+<title>Velocity Drive: Synthwave</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
 html, body {
   margin: 0;
-  background: radial-gradient(#0a0a14, #000);
+  background: radial-gradient(#0b0020, #000);
   font-family: system-ui, Arial;
   color: white;
   overflow: hidden;
 }
 
-#ui {
-  position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 18px;
-  background: rgba(0,0,0,.6);
-  padding: 10px 18px;
-  border-radius: 14px;
-  backdrop-filter: blur(6px);
-  z-index: 10;
-}
-
-#ui span {
-  font-weight: 600;
-}
-
-#garage {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 420px;
-  background: #05050a;
-  border-top: 3px solid #00f6ff;
-  padding: 12px;
-  display: none;
-  z-index: 10;
-}
-
-button {
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(135deg, #00f6ff, #0066ff);
-  color: black;
-  font-weight: 800;
-  cursor: pointer;
-}
 canvas {
   display: block;
   margin: auto;
+}
+
+/* UI SCREENS */
+.screen {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  background: radial-gradient(#120030, #000);
+  z-index: 10;
+}
+
+.screen h1 {
+  font-size: 48px;
+  margin-bottom: 10px;
+  text-shadow: 0 0 25px #ff00ff;
+}
+
+.screen p {
+  opacity: 0.8;
+}
+
+button {
+  margin-top: 12px;
+  padding: 12px 26px;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ff00ff, #00f6ff);
+  color: black;
+  cursor: pointer;
+  box-shadow: 0 0 25px #ff00ff;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui">
-  <span>💰 $<span id="money">0</span></span>
-  <span>⚡ <span id="speed">0</span></span>
-  <span>🏆 Best: <span id="best">0</span></span>
+<!-- MAIN MENU -->
+<div id="menu" class="screen" style="display:flex">
+  <h1>VELOCITY DRIVE</h1>
+  <p>S Y N T H W A V E</p>
+  <button onclick="startGame()">START</button>
+</div>
+
+<!-- CRASH SCREEN -->
+<div id="crash" class="screen">
+  <h1>CRASHED</h1>
+  <p>Distance: <span id="finalDist">0</span> ft</p>
+  <button onclick="restart()">Restart</button>
+  <button onclick="backToMenu()">Main Menu</button>
 </div>
 
 <canvas id="game" width="800" height="600"></canvas>
 
-<div id="garage">
-  <h3>🚗 GARAGE</h3>
-  <button onclick="upgrade('speed',500)">Upgrade Max Speed ($500)</button>
-  <button onclick="upgrade('handling',400)">Upgrade Handling ($400)</button>
-  <button onclick="upgrade('boost',600)">Upgrade Boost ($600)</button>
-  <button onclick="toggleGarage()">Close</button>
-</div>
-
 <script>
-/* ===== SAVE ===== */
-let save = JSON.parse(localStorage.getItem("velocityDrive")) || {
-  money: 0,
-  best: 0,
-  speed: 10,
-  handling: 0.08,
-  boost: 1.8
-};
-
+/* ===== CANVAS ===== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-/* ===== UI ===== */
-const moneyEl = document.getElementById("money");
-const speedEl = document.getElementById("speed");
-const bestEl = document.getElementById("best");
+/* ===== GAME STATE ===== */
+let state = "menu";
 
 /* ===== INPUT ===== */
 const keys = {};
-addEventListener("keydown", e => {
-  keys[e.key.toLowerCase()] = true;
-  if (e.key === "e") toggleGarage();
-});
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
 /* ===== PLAYER ===== */
-let player = {
-  x: 400,
-  y: 460,
-  vx: 0,
-  speed: 0
-};
+let player, distance, speed;
 
 /* ===== TRAFFIC ===== */
-let cars = [];
-function spawnCar() {
-  cars.push({
+let enemies = [];
+
+/* ===== START ===== */
+function startGame() {
+  menu.style.display = "none";
+  crash.style.display = "none";
+  state = "game";
+
+  player = { x: 400, vx: 0 };
+  speed = 0;
+  distance = 0;
+  enemies = [];
+}
+
+/* ===== RESTART ===== */
+function restart() {
+  startGame();
+}
+
+/* ===== MENU ===== */
+function backToMenu() {
+  crash.style.display = "none";
+  menu.style.display = "flex";
+  state = "menu";
+}
+
+/* ===== SPAWN ENEMIES ===== */
+function spawnEnemy() {
+  enemies.push({
     x: 200 + Math.random() * 400,
-    y: -100,
-    speed: 3 + Math.random() * 3
+    y: -100
   });
 }
-setInterval(spawnCar, 900);
+setInterval(() => {
+  if (state === "game") spawnEnemy();
+}, 900);
 
-/* ===== GARAGE ===== */
-function toggleGarage() {
-  garage.style.display = garage.style.display ? "" : "block";
-}
-function upgrade(type, cost) {
-  if (save.money < cost) return;
-  save.money -= cost;
-  if (type === "speed") save.speed += 1;
-  if (type === "handling") save.handling += 0.01;
-  if (type === "boost") save.boost += 0.2;
-  localStorage.setItem("velocityDrive", JSON.stringify(save));
+/* ===== DRAW BACKGROUND ===== */
+function drawBackground() {
+  // Sky
+  const g = ctx.createLinearGradient(0,0,0,600);
+  g.addColorStop(0,"#20004d");
+  g.addColorStop(1,"#000");
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,800,600);
+
+  // Sun
+  ctx.beginPath();
+  ctx.arc(400,200,80,0,Math.PI*2);
+  ctx.fillStyle = "#ff3cac";
+  ctx.shadowColor = "#ff3cac";
+  ctx.shadowBlur = 30;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Grid
+  ctx.strokeStyle = "#7f00ff";
+  for(let i=0;i<20;i++){
+    ctx.beginPath();
+    ctx.moveTo(0,400+i*20);
+    ctx.lineTo(800,400+i*20);
+    ctx.stroke();
+  }
+  for(let i=0;i<40;i++){
+    ctx.beginPath();
+    ctx.moveTo(i*20,400);
+    ctx.lineTo(400,600);
+    ctx.stroke();
+  }
 }
 
 /* ===== GAME LOOP ===== */
 function loop() {
-  ctx.clearRect(0,0,800,600);
+  requestAnimationFrame(loop);
+  if (state !== "game") return;
 
-  // Road
-  ctx.fillStyle = "#222";
-  ctx.fillRect(150,0,500,600);
-  ctx.strokeStyle = "#fff";
-  ctx.setLineDash([20,20]);
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(400,0);
-  ctx.lineTo(400,600);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  drawBackground();
 
   // Controls
-  if (keys["w"] || keys["arrowup"]) player.speed += 0.2;
-  if (keys["s"] || keys["arrowdown"]) player.speed -= 0.3;
-  player.speed *= 0.98;
-  player.speed = Math.max(0, Math.min(save.speed, player.speed));
+  if (keys["w"] || keys["arrowup"]) speed += 0.15;
+  if (keys["s"] || keys["arrowdown"]) speed -= 0.2;
+  speed *= 0.98;
+  speed = Math.max(0, Math.min(12, speed));
 
-  if (keys["a"] || keys["arrowleft"]) player.vx -= save.handling;
-  if (keys["d"] || keys["arrowright"]) player.vx += save.handling;
+  if (keys["a"] || keys["arrowleft"]) player.vx -= 0.15;
+  if (keys["d"] || keys["arrowright"]) player.vx += 0.15;
   player.vx *= 0.9;
-
-  player.x += player.vx * 60;
-  player.x = Math.max(170, Math.min(630, player.x));
+  player.x += player.vx * 20;
+  player.x = Math.max(200, Math.min(600, player.x));
 
   // Player car
   ctx.fillStyle = "#00f6ff";
   ctx.shadowColor = "#00f6ff";
   ctx.shadowBlur = 20;
-  ctx.fillRect(player.x-18, player.y-40, 36, 70);
+  ctx.fillRect(player.x-18,460,36,80);
   ctx.shadowBlur = 0;
 
-  // Traffic
-  cars.forEach(c => {
-    c.y += c.speed + player.speed;
-    ctx.fillStyle = "#ff3355";
-    ctx.fillRect(c.x-18, c.y-40, 36, 70);
+  // Enemies
+  enemies.forEach(e => {
+    e.y += speed + 4;
+    ctx.fillStyle = "#ff004c";
+    ctx.fillRect(e.x-18,e.y,36,80);
 
-    if (Math.abs(c.x-player.x)<30 && Math.abs(c.y-player.y)<50) crash();
+    if (Math.abs(e.x-player.x)<30 && Math.abs(e.y-460)<60) crashGame();
   });
+  enemies = enemies.filter(e => e.y < 700);
 
-  cars = cars.filter(c => c.y < 700);
-
-  // Score & money
-  save.money += player.speed * 0.1;
-  save.best = Math.max(save.best, save.money);
-
-  moneyEl.textContent = Math.floor(save.money);
-  speedEl.textContent = player.speed.toFixed(1);
-  bestEl.textContent = Math.floor(save.best);
-
-  localStorage.setItem("velocityDrive", JSON.stringify(save));
-
-  requestAnimationFrame(loop);
+  // Distance
+  distance += speed;
+  ctx.fillStyle = "#fff";
+  ctx.fillText("Distance: " + Math.floor(distance) + " ft", 20, 30);
 }
+
+/* ===== CRASH ===== */
+function crashGame() {
+  state = "crash";
+  finalDist.textContent = Math.floor(distance);
+  crash.style.display = "flex";
+}
+
 loop();
-
-function crash() {
-  alert("CRASH! Distance Saved.");
-  location.reload();
-}
 </script>
 
 </body>
