@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Car Rush 💰</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  margin: 0;
+  background: #111;
+  font-family: Arial, sans-serif;
+  color: white;
+  overflow: hidden;
+}
+
+#topUI {
+  text-align: center;
+  padding: 6px;
+  background: #000;
+  font-size: 14px;
+}
+
+#game {
+  position: relative;
+  width: 320px;
+  height: 520px;
+  margin: auto;
+  background: #444;
+  border: 4px solid gold;
+  overflow: hidden;
+}
+
+#player {
+  position: absolute;
+  width: 50px;
+  height: 80px;
+  bottom: 20px;
+  left: 135px;
+  background: cyan;
+  border-radius: 6px;
+}
+
+.animated {
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.6); }
+  100% { filter: brightness(1); }
+}
+
+.enemy {
+  position: absolute;
+  width: 50px;
+  height: 80px;
+  background: red;
+  border-radius: 6px;
+}
+
+.obstacle {
+  position: absolute;
+  width: 60px;
+  height: 20px;
+  background: orange;
+}
+
+button {
+  margin: 4px;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: gold;
+  font-weight: bold;
+}
+
+#controls {
+  display: flex;
+  justify-content: center;
+}
+
+.panel {
+  display: none;
+  background: #222;
+  padding: 10px;
+  border-top: 3px solid gold;
+}
+
+#ad {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.9);
+  text-align: center;
+  padding-top: 150px;
+  z-index: 10;
+}
+</style>
+</head>
+
+<body>
+
+<div id="topUI">
+💰 <span id="cash">0</span>
+💎 <span id="gems">0</span>
+⭐ <span id="score">0</span>
+♻️ Rebirths: <span id="rebirths">0</span>
+<br>
+<button onclick="openShop()">Shop</button>
+<button onclick="openLoot()">Loot Box</button>
+<button onclick="rebirth()">Rebirth</button>
+<button onclick="toggleMode()">Mode</button>
+<button onclick="fullscreen()">Fullscreen</button>
+</div>
+
+<div id="game">
+  <div id="player"></div>
+</div>
+
+<div id="controls">
+  <button onclick="left()">⬅️</button>
+  <button onclick="boost()">🚀</button>
+  <button onclick="right()">➡️</button>
+</div>
+
+<div id="shop" class="panel">
+<h3>🎨 Skins</h3>
+<button onclick="buySkin('cyan',0)">Free</button>
+<button onclick="buySkin('lime',100)">Green</button>
+<button onclick="buySkin('gold',300)">Gold</button>
+<button onclick="buyAnimated()">Animated (💎5)</button>
+</div>
+
+<div id="loot" class="panel">
+<h3>🔥 Loot Box</h3>
+<button onclick="openBox()">Open (💎3)</button>
+</div>
+
+<div id="ad">
+<h2>ADVERTISEMENT 💀</h2>
+<p>BUY ROBUX 💸</p>
+<button onclick="closeAd()">Continue</button>
+</div>
+
+<script>
+const player = document.getElementById("player");
+const game = document.getElementById("game");
+
+let data = JSON.parse(localStorage.getItem("carRush")) || {
+  cash: 0,
+  gems: 0,
+  rebirths: 0,
+  skin: "cyan",
+  animated: false,
+  leaderboard: [],
+  lastDaily: 0
+};
+
+let x = 135, speed = 4, score = 0, boosting=false;
+let mode = "road";
+
+function save() {
+  localStorage.setItem("carRush", JSON.stringify(data));
+}
+
+function updateUI() {
+  cash.textContent = data.cash;
+  gems.textContent = data.gems;
+  rebirths.textContent = data.rebirths;
+  scoreEl.textContent = score;
+  player.style.background = data.skin;
+  player.className = data.animated ? "animated" : "";
+}
+const cash = document.getElementById("cash");
+const gems = document.getElementById("gems");
+const rebirths = document.getElementById("rebirths");
+const scoreEl = document.getElementById("score");
+
+updateUI();
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="ArrowLeft") left();
+  if(e.key==="ArrowRight") right();
+  if(e.key===" ") boost();
+});
+
+function left(){ if(x>0) x-=25; player.style.left=x+"px"; }
+function right(){ if(x<270) x+=25; player.style.left=x+"px"; }
+
+function boost(){
+  if(boosting) return;
+  boosting=true; speed+=4;
+  setTimeout(()=>{speed-=4; boosting=false},1000);
+}
+
+function spawnEnemy(){
+  if(mode==="obby") return;
+  const e=document.createElement("div");
+  e.className="enemy";
+  e.style.left=Math.floor(Math.random()*6)*50+"px";
+  game.appendChild(e);
+  let y=-80, drift=(Math.random()-0.5)*0.5;
+
+  function move(){
+    y+=speed;
+    e.style.top=y+"px";
+    let ex=parseFloat(e.style.left);
+    e.style.left=(ex+drift)+"px";
+
+    if(collide(player,e)) death();
+    if(y>520){ e.remove(); score++; data.cash+=5+data.rebirths; }
+    else requestAnimationFrame(move);
+  }
+  move();
+}
+
+function spawnObstacle(){
+  const o=document.createElement("div");
+  o.className="obstacle";
+  o.style.left=Math.random()*250+"px";
+  o.style.top=Math.random()*400+"px";
+  game.appendChild(o);
+  setTimeout(()=>o.remove(),3000);
+}
+
+function collide(a,b){
+  const A=a.getBoundingClientRect(), B=b.getBoundingClientRect();
+  return A.left<B.right && A.right>B.left && A.top<B.bottom && A.bottom>B.top;
+}
+
+function death(){
+  data.leaderboard.push(score);
+  data.leaderboard.sort((a,b)=>b-a);
+  data.leaderboard=data.leaderboard.slice(0,5);
+  save();
+  showAd();
+}
+
+function showAd(){ ad.style.display="block"; }
+function closeAd(){ location.reload(); }
+
+setInterval(spawnEnemy,1100);
+setInterval(()=>{ if(mode==="obby") spawnObstacle(); },1500);
+
+function openShop(){ shop.style.display=shop.style.display?"":"block"; }
+function openLoot(){ loot.style.display=loot.style.display?"":"block"; }
+
+function buySkin(c,p){
+  if(data.cash>=p){ data.cash-=p; data.skin=c; save(); updateUI(); }
+}
+
+function buyAnimated(){
+  if(data.gems>=5){ data.gems-=5; data.animated=true; save(); updateUI(); }
+}
+
+function openBox(){
+  if(data.gems<3) return alert("Not enough gems");
+  data.gems-=3;
+  const r=Math.random();
+  if(r<0.4) data.cash+=200;
+  else if(r<0.7) data.gems+=2;
+  else data.animated=true;
+  save(); updateUI();
+}
+
+function rebirth(){
+  if(data.cash>=1000){
+    data.cash=0;
+    data.rebirths++;
+    data.gems+=2;
+    save(); updateUI();
+  }
+}
+
+function toggleMode(){
+  mode=mode==="road"?"obby":"road";
+  alert("Mode: "+mode);
+}
+
+function fullscreen(){
+  document.documentElement.requestFullscreen();
+}
+
+/* DAILY REWARD */
+if(Date.now()-data.lastDaily>86400000){
+  data.cash+=200;
+  data.gems+=1;
+  data.lastDaily=Date.now();
+  save();
+  alert("Daily reward claimed!");
+}
+</script>
+
+</body>
+</html>
