@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Parking Game</title>
+<style>
+    body {
+        margin: 0;
+        background: #111;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        color: white;
+        font-family: Arial;
+    }
+    canvas {
+        background: #2a2a2a;
+        border: 3px solid #555;
+    }
+</style>
+</head>
+<body>
+
+<canvas id="game" width="800" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// Car
+let car = {
+    x: 100,
+    y: 250,
+    width: 40,
+    height: 20,
+    angle: 0,
+    speed: 0
+};
+
+// Parking spot
+const parking = {
+    x: 650,
+    y: 200,
+    width: 60,
+    height: 40
+};
+
+// Walls
+const walls = [
+    {x: 300, y: 0, w: 20, h: 350},
+    {x: 300, y: 400, w: 20, h: 100},
+    {x: 500, y: 150, w: 20, h: 350}
+];
+
+let keys = {};
+let win = false;
+
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+function update() {
+    if (win) return;
+
+    if (keys["w"] || keys["ArrowUp"]) car.speed += 0.1;
+    if (keys["s"] || keys["ArrowDown"]) car.speed -= 0.1;
+    car.speed *= 0.98;
+
+    if (keys["a"] || keys["ArrowLeft"]) car.angle -= 0.04;
+    if (keys["d"] || keys["ArrowRight"]) car.angle += 0.04;
+
+    car.x += Math.cos(car.angle) * car.speed;
+    car.y += Math.sin(car.angle) * car.speed;
+
+    checkCollisions();
+    checkParking();
+}
+
+function checkCollisions() {
+    for (let wall of walls) {
+        if (
+            car.x < wall.x + wall.w &&
+            car.x + car.width > wall.x &&
+            car.y < wall.y + wall.h &&
+            car.y + car.height > wall.y
+        ) {
+            car.speed = 0;
+            car.x -= Math.cos(car.angle) * 5;
+            car.y -= Math.sin(car.angle) * 5;
+        }
+    }
+}
+
+function checkParking() {
+    if (
+        car.x > parking.x &&
+        car.x + car.width < parking.x + parking.width &&
+        car.y > parking.y &&
+        car.y + car.height < parking.y + parking.height &&
+        Math.abs(car.speed) < 0.3
+    ) {
+        win = true;
+    }
+}
+
+function drawCar() {
+    ctx.save();
+    ctx.translate(car.x + car.width / 2, car.y + car.height / 2);
+    ctx.rotate(car.angle);
+    ctx.fillStyle = "red";
+    ctx.fillRect(-car.width / 2, -car.height / 2, car.width, car.height);
+    ctx.restore();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Parking spot
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(parking.x, parking.y, parking.width, parking.height);
+
+    // Walls
+    ctx.fillStyle = "#555";
+    walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+    drawCar();
+
+    if (win) {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Parked!", 320, 250);
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
