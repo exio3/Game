@@ -6,213 +6,236 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-html, body {
-  margin: 0;
-  background: radial-gradient(#0b0020, #000);
-  font-family: system-ui, Arial;
-  color: white;
-  overflow: hidden;
+html,body{
+  margin:0;
+  background:#000;
+  font-family:system-ui,Arial;
+  overflow:hidden;
+  color:white;
+}
+canvas{display:block;margin:auto}
+
+/* Screens */
+.screen{
+  position:fixed;
+  inset:0;
+  display:none;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+  z-index:10;
+}
+#menu{
+  display:flex;
+  background:#0f0f14; /* lighter black */
+}
+#crash{
+  background:#000;
 }
 
-canvas {
-  display: block;
-  margin: auto;
+h1{
+  font-size:48px;
+  margin:0;
+  text-shadow:0 0 25px #ff00ff;
 }
+p{opacity:.85}
 
-/* UI SCREENS */
-.screen {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  background: radial-gradient(#120030, #000);
-  z-index: 10;
-}
-
-.screen h1 {
-  font-size: 48px;
-  margin-bottom: 10px;
-  text-shadow: 0 0 25px #ff00ff;
-}
-
-.screen p {
-  opacity: 0.8;
-}
-
-button {
-  margin-top: 12px;
-  padding: 12px 26px;
-  font-size: 16px;
-  font-weight: 700;
-  border: none;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #ff00ff, #00f6ff);
-  color: black;
-  cursor: pointer;
-  box-shadow: 0 0 25px #ff00ff;
+button{
+  margin-top:12px;
+  padding:12px 26px;
+  font-size:16px;
+  font-weight:800;
+  border:none;
+  border-radius:12px;
+  background:linear-gradient(135deg,#ff00ff,#00f6ff);
+  color:black;
+  cursor:pointer;
+  box-shadow:0 0 20px #ff00ff;
 }
 </style>
 </head>
 
 <body>
 
-<!-- MAIN MENU -->
-<div id="menu" class="screen" style="display:flex">
+<!-- MENU -->
+<div id="menu" class="screen">
   <h1>VELOCITY DRIVE</h1>
   <p>S Y N T H W A V E</p>
   <button onclick="startGame()">START</button>
 </div>
 
-<!-- CRASH SCREEN -->
+<!-- CRASH -->
 <div id="crash" class="screen">
   <h1>CRASHED</h1>
   <p>Distance: <span id="finalDist">0</span> ft</p>
   <button onclick="restart()">Restart</button>
-  <button onclick="backToMenu()">Main Menu</button>
+  <button onclick="toMenu()">Main Menu</button>
 </div>
 
 <canvas id="game" width="800" height="600"></canvas>
 
 <script>
-/* ===== CANVAS ===== */
+/* ================== SETUP ================== */
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+let state="menu";
 
-/* ===== GAME STATE ===== */
-let state = "menu";
+/* SAVE */
+let save = JSON.parse(localStorage.getItem("vd_synth")) || {
+  best:0,
+  unlocked:1
+};
 
-/* ===== INPUT ===== */
-const keys = {};
-addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+/* INPUT */
+const keys={};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
 
-/* ===== PLAYER ===== */
-let player, distance, speed;
-
-/* ===== TRAFFIC ===== */
-let enemies = [];
-
-/* ===== START ===== */
-function startGame() {
-  menu.style.display = "none";
-  crash.style.display = "none";
-  state = "game";
-
-  player = { x: 400, vx: 0 };
-  speed = 0;
-  distance = 0;
-  enemies = [];
+/* GAMEPAD */
+function gamepad(){
+  const g=navigator.getGamepads()[0];
+  if(!g) return;
+  if(g.axes[0]<-0.2) keys["a"]=true;
+  if(g.axes[0]>0.2) keys["d"]=true;
+  if(g.buttons[0].pressed) keys["w"]=true;
 }
 
-/* ===== RESTART ===== */
-function restart() {
-  startGame();
+/* AUDIO */
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+const engine=audioCtx.createOscillator();
+const gain=audioCtx.createGain();
+engine.type="sawtooth";
+engine.connect(gain).connect(audioCtx.destination);
+engine.start();
+gain.gain.value=0;
+
+/* PLAYER */
+let player, speed, dist;
+const cars=[
+  {color:"#00f6ff",max:12},
+  {color:"#ff00ff",max:14},
+  {color:"#ffe600",max:16}
+];
+
+/* TRAFFIC */
+let traffic=[];
+
+/* START */
+function startGame(){
+  menu.style.display="none";
+  crash.style.display="none";
+  state="game";
+  player={x:400,vx:0,car:0};
+  speed=0;
+  dist=0;
+  traffic=[];
+  audioCtx.resume();
 }
 
-/* ===== MENU ===== */
-function backToMenu() {
-  crash.style.display = "none";
-  menu.style.display = "flex";
-  state = "menu";
+/* RESTART */
+function restart(){startGame()}
+function toMenu(){
+  state="menu";
+  menu.style.display="flex";
+  crash.style.display="none";
 }
 
-/* ===== SPAWN ENEMIES ===== */
-function spawnEnemy() {
-  enemies.push({
-    x: 200 + Math.random() * 400,
-    y: -100
-  });
-}
-setInterval(() => {
-  if (state === "game") spawnEnemy();
-}, 900);
+/* SPAWN TRAFFIC */
+setInterval(()=>{
+  if(state!=="game")return;
+  traffic.push({x:200+Math.random()*400,y:-80});
+},900);
 
-/* ===== DRAW BACKGROUND ===== */
-function drawBackground() {
-  // Sky
-  const g = ctx.createLinearGradient(0,0,0,600);
-  g.addColorStop(0,"#20004d");
+/* DRAW BACKGROUND */
+function background(){
+  // sky
+  const g=ctx.createLinearGradient(0,0,0,600);
+  g.addColorStop(0,"#2b0055");
   g.addColorStop(1,"#000");
-  ctx.fillStyle = g;
+  ctx.fillStyle=g;
   ctx.fillRect(0,0,800,600);
 
-  // Sun
+  // sun
   ctx.beginPath();
-  ctx.arc(400,200,80,0,Math.PI*2);
-  ctx.fillStyle = "#ff3cac";
-  ctx.shadowColor = "#ff3cac";
-  ctx.shadowBlur = 30;
+  ctx.arc(400,200,90,0,Math.PI*2);
+  ctx.fillStyle="#ff2fd2";
+  ctx.shadowColor="#ff2fd2";
+  ctx.shadowBlur=30;
   ctx.fill();
-  ctx.shadowBlur = 0;
+  ctx.shadowBlur=0;
 
-  // Grid
-  ctx.strokeStyle = "#7f00ff";
+  // grid
+  ctx.strokeStyle="#7f00ff";
   for(let i=0;i<20;i++){
     ctx.beginPath();
     ctx.moveTo(0,400+i*20);
     ctx.lineTo(800,400+i*20);
     ctx.stroke();
   }
-  for(let i=0;i<40;i++){
-    ctx.beginPath();
-    ctx.moveTo(i*20,400);
-    ctx.lineTo(400,600);
-    ctx.stroke();
-  }
 }
 
-/* ===== GAME LOOP ===== */
-function loop() {
+/* LOOP */
+function loop(){
   requestAnimationFrame(loop);
-  if (state !== "game") return;
+  if(state!=="game") return;
 
-  drawBackground();
+  gamepad();
+  background();
 
-  // Controls
-  if (keys["w"] || keys["arrowup"]) speed += 0.15;
-  if (keys["s"] || keys["arrowdown"]) speed -= 0.2;
-  speed *= 0.98;
-  speed = Math.max(0, Math.min(12, speed));
+  // controls
+  if(keys["w"]||keys["arrowup"]) speed+=0.2;
+  if(keys["s"]||keys["arrowdown"]) speed-=0.25;
+  speed*=0.98;
+  speed=Math.max(0,Math.min(cars[player.car].max,speed));
 
-  if (keys["a"] || keys["arrowleft"]) player.vx -= 0.15;
-  if (keys["d"] || keys["arrowright"]) player.vx += 0.15;
-  player.vx *= 0.9;
-  player.x += player.vx * 20;
-  player.x = Math.max(200, Math.min(600, player.x));
+  if(keys["a"]||keys["arrowleft"]) player.vx-=0.15;
+  if(keys["d"]||keys["arrowright"]) player.vx+=0.15;
+  player.vx*=0.9;
+  player.x+=player.vx*18;
+  player.x=Math.max(200,Math.min(600,player.x));
 
-  // Player car
-  ctx.fillStyle = "#00f6ff";
-  ctx.shadowColor = "#00f6ff";
-  ctx.shadowBlur = 20;
-  ctx.fillRect(player.x-18,460,36,80);
-  ctx.shadowBlur = 0;
+  // engine sound
+  engine.frequency.value=80+speed*20;
+  gain.gain.value=0.03+speed*0.01;
 
-  // Enemies
-  enemies.forEach(e => {
-    e.y += speed + 4;
-    ctx.fillStyle = "#ff004c";
-    ctx.fillRect(e.x-18,e.y,36,80);
+  // car
+  ctx.fillStyle=cars[player.car].color;
+  ctx.shadowColor=cars[player.car].color;
+  ctx.shadowBlur=25;
+  ctx.fillRect(player.x-20,460,40,80);
+  ctx.shadowBlur=0;
 
-    if (Math.abs(e.x-player.x)<30 && Math.abs(e.y-460)<60) crashGame();
+  // traffic
+  traffic.forEach(t=>{
+    t.y+=speed+4;
+    ctx.fillStyle="#ff004c";
+    ctx.fillRect(t.x-18,t.y,36,80);
+    if(Math.abs(t.x-player.x)<30 && Math.abs(t.y-460)<60) crashGame();
   });
-  enemies = enemies.filter(e => e.y < 700);
+  traffic=traffic.filter(t=>t.y<700);
 
-  // Distance
-  distance += speed;
-  ctx.fillStyle = "#fff";
-  ctx.fillText("Distance: " + Math.floor(distance) + " ft", 20, 30);
+  // distance
+  dist+=speed;
+  save.best=Math.max(save.best,dist);
+  ctx.fillStyle="white";
+  ctx.fillText(`Distance: ${Math.floor(dist)} ft`,20,30);
+  ctx.fillText(`Best: ${Math.floor(save.best)} ft`,20,50);
+
+  // unlock cars
+  if(dist>1500) save.unlocked=2;
+  if(dist>3000) save.unlocked=3;
+
+  localStorage.setItem("vd_synth",JSON.stringify(save));
 }
-
-/* ===== CRASH ===== */
-function crashGame() {
-  state = "crash";
-  finalDist.textContent = Math.floor(distance);
-  crash.style.display = "flex";
-}
-
 loop();
+
+/* CRASH */
+function crashGame(){
+  state="crash";
+  finalDist.textContent=Math.floor(dist);
+  crash.style.display="flex";
+  gain.gain.value=0;
+}
 </script>
 
 </body>
