@@ -1,146 +1,173 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>Parking Game</title>
+<title>Parking Fury Ultimate</title>
 <style>
-    body {
-        margin: 0;
-        background: #111;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        color: white;
-        font-family: Arial;
-    }
-    canvas {
-        background: #2a2a2a;
-        border: 3px solid #555;
-    }
+body{margin:0;background:#181818;color:white;font-family:Arial;overflow:hidden}
+canvas{display:block;margin:auto;background:#2a2a2a}
+#ui{position:absolute;top:10px;left:10px}
+button{padding:10px;margin:5px;font-size:14px}
+#joystick{position:absolute;bottom:20px;left:20px;width:120px;height:120px;border-radius:50%;background:#333;opacity:.8}
+#stick{position:absolute;width:50px;height:50px;border-radius:50%;background:#aaa;top:35px;left:35px}
+#pedals{position:absolute;bottom:20px;right:20px}
+.hidden{display:none}
 </style>
 </head>
+
 <body>
 
-<canvas id="game" width="800" height="500"></canvas>
+<div id="ui">
+<button onclick="toggleShop()">Skins</button>
+<button onclick="toggleEditor()">Editor (E)</button>
+</div>
+
+<div id="joystick" class="hidden"><div id="stick"></div></div>
+<div id="pedals" class="hidden">
+<button id="gas">GAS</button><br>
+<button id="brake">BRAKE</button>
+</div>
+
+<canvas id="game" width="900" height="550"></canvas>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+/* ================== SETUP ================== */
+const c=document.getElementById("game"),ctx=c.getContext("2d");
+const isMobile=("ontouchstart"in window);
+if(isMobile){
+ document.getElementById("joystick").classList.remove("hidden");
+ document.getElementById("pedals").classList.remove("hidden");
+}
 
-// Car
-let car = {
-    x: 100,
-    y: 250,
-    width: 40,
-    height: 20,
-    angle: 0,
-    speed: 0
+let keys={},editor=false,shop=false;
+
+/* ================== ASSETS ================== */
+const imgCar=new Image(); imgCar.src="assets/car_red.png";
+const imgPolice=new Image(); imgPolice.src="assets/car_police.png";
+const asphalt=new Image(); asphalt.src="assets/asphalt.png";
+
+/* ================== GAME STATE ================== */
+let car={x:100,y:250,a:0,v:0};
+let police={x:800,y:100,a:0,v:0,active:true};
+let parking={x:760,y:260};
+let walls=[{x:400,y:0,w:20,h:400}];
+let XP=+localStorage.XP||1;
+let damage=0;
+
+/* ================== INPUT ================== */
+document.onkeydown=e=>{
+ keys[e.key]=true;
+ if(e.key==="e"||e.key==="E")toggleEditor();
 };
+document.onkeyup=e=>keys[e.key]=false;
 
-// Parking spot
-const parking = {
-    x: 650,
-    y: 200,
-    width: 60,
-    height: 40
-};
+/* ================== MOBILE JOYSTICK ================== */
+let joy={x:0,y:0};
+const joyDiv=document.getElementById("joystick");
+const stick=document.getElementById("stick");
 
-// Walls
-const walls = [
-    {x: 300, y: 0, w: 20, h: 350},
-    {x: 300, y: 400, w: 20, h: 100},
-    {x: 500, y: 150, w: 20, h: 350}
-];
+joyDiv?.addEventListener("touchmove",e=>{
+ let r=joyDiv.getBoundingClientRect();
+ let t=e.touches[0];
+ joy.x=(t.clientX-r.left-60)/40;
+ joy.y=(t.clientY-r.top-60)/40;
+ joy.x=Math.max(-1,Math.min(1,joy.x));
+ joy.y=Math.max(-1,Math.min(1,joy.y));
+ stick.style.left=35+joy.x*30+"px";
+ stick.style.top=35+joy.y*30+"px";
+});
 
-let keys = {};
-let win = false;
+/* ================== UPDATE ================== */
+function update(){
+ let accel=0,turn=0;
+ if(keys.w||keys.ArrowUp||joy.y<-0.3)accel=0.2;
+ if(keys.s||keys.ArrowDown||joy.y>0.3)accel=-0.2;
+ if(keys.a||keys.ArrowLeft||joy.x<-0.3)turn=-0.05;
+ if(keys.d||keys.ArrowRight||joy.x>0.3)turn=0.05;
 
-document.addEventListener("keydown", e => keys[e.key] = true);
-document.addEventListener("keyup", e => keys[e.key] = false);
+ car.v+=accel; car.v*=0.96; car.a+=turn;
+ car.x+=Math.cos(car.a)*car.v;
+ car.y+=Math.sin(car.a)*car.v;
 
-function update() {
-    if (win) return;
+ // Police AI chase
+ if(police.active){
+  let dx=car.x-police.x,dy=car.y-police.y;
+  police.a=Math.atan2(dy,dx);
+  police.v=0.18;
+  police.x+=Math.cos(police.a)*police.v;
+  police.y+=Math.sin(police.a)*police.v;
+ }
 
-    if (keys["w"] || keys["ArrowUp"]) car.speed += 0.1;
-    if (keys["s"] || keys["ArrowDown"]) car.speed -= 0.1;
-    car.speed *= 0.98;
+ // Wall collision
+ walls.forEach(w=>{
+  if(car.x<w.x+w.w&&car.x+40>w.x&&car.y<w.y+w.h&&car.y+20>w.y){
+   damage+=10;
+   car.v*=-0.4;
+  }
+ });
 
-    if (keys["a"] || keys["ArrowLeft"]) car.angle -= 0.04;
-    if (keys["d"] || keys["ArrowRight"]) car.angle += 0.04;
-
-    car.x += Math.cos(car.angle) * car.speed;
-    car.y += Math.sin(car.angle) * car.speed;
-
-    checkCollisions();
-    checkParking();
+ // Park check
+ if(car.x>parking.x&&car.y>parking.y&&Math.abs(car.v)<0.4){
+  XP++;
+  localStorage.XP=XP;
+ }
 }
 
-function checkCollisions() {
-    for (let wall of walls) {
-        if (
-            car.x < wall.x + wall.w &&
-            car.x + car.width > wall.x &&
-            car.y < wall.y + wall.h &&
-            car.y + car.height > wall.y
-        ) {
-            car.speed = 0;
-            car.x -= Math.cos(car.angle) * 5;
-            car.y -= Math.sin(car.angle) * 5;
-        }
-    }
+/* ================== DRAW ================== */
+function draw(){
+ ctx.clearRect(0,0,c.width,c.height);
+ ctx.drawImage(asphalt,0,0,c.width,c.height);
+
+ // Parking
+ ctx.strokeStyle="lime";
+ ctx.strokeRect(parking.x,parking.y,50,30);
+
+ // Walls
+ ctx.fillStyle="#555";
+ walls.forEach(w=>ctx.fillRect(w.x,w.y,w.w,w.h));
+
+ // Car
+ ctx.save();
+ ctx.translate(car.x+20,car.y+10);
+ ctx.rotate(car.a);
+ ctx.drawImage(imgCar,-20,-10,40,20);
+ ctx.restore();
+
+ // Police
+ if(police.active){
+  ctx.save();
+  ctx.translate(police.x+20,police.y+10);
+  ctx.rotate(police.a);
+  ctx.drawImage(imgPolice,-20,-10,40,20);
+  ctx.restore();
+ }
+
+ ctx.fillStyle="white";
+ ctx.fillText("XP: "+XP,10,20);
+ ctx.fillText("Damage: "+damage+"%",10,40);
+
+ if(editor){
+  ctx.fillStyle="yellow";
+  ctx.fillText("EDITOR MODE: Click to place walls",10,60);
+ }
 }
 
-function checkParking() {
-    if (
-        car.x > parking.x &&
-        car.x + car.width < parking.x + parking.width &&
-        car.y > parking.y &&
-        car.y + car.height < parking.y + parking.height &&
-        Math.abs(car.speed) < 0.3
-    ) {
-        win = true;
-    }
+/* ================== LEVEL EDITOR ================== */
+c.addEventListener("click",e=>{
+ if(!editor)return;
+ let r=c.getBoundingClientRect();
+ walls.push({x:e.clientX-r.left,y:e.clientY-r.top,w:20,h:80});
+});
+
+/* ================== UI ================== */
+function toggleEditor(){editor=!editor}
+function toggleShop(){
+ alert("Skins Shop\n(Connect Stripe / itch.io API here)");
 }
 
-function drawCar() {
-    ctx.save();
-    ctx.translate(car.x + car.width / 2, car.y + car.height / 2);
-    ctx.rotate(car.angle);
-    ctx.fillStyle = "red";
-    ctx.fillRect(-car.width / 2, -car.height / 2, car.width, car.height);
-    ctx.restore();
-}
-
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Parking spot
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(parking.x, parking.y, parking.width, parking.height);
-
-    // Walls
-    ctx.fillStyle = "#555";
-    walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-    drawCar();
-
-    if (win) {
-        ctx.fillStyle = "white";
-        ctx.font = "40px Arial";
-        ctx.fillText("Parked!", 320, 250);
-    }
-}
-
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-gameLoop();
+/* ================== LOOP ================== */
+function loop(){update();draw();requestAnimationFrame(loop)}
+loop();
 </script>
-
 </body>
 </html>
